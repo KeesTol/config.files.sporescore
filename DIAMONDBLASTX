@@ -1,0 +1,41 @@
+#!/bin/bash
+#SBATCH --job-name=diamond_blastx_job        # Job name
+#SBATCH --output=fastp.diamond_blastx_%j.out       # Standard output (%j is the job ID)
+#SBATCH --error=fastp.diamond_blastx_%j.err        # Standard error (%j is the job ID)
+#SBATCH --time=08:00:00                      # Time limit (hh:mm:ss)
+#SBATCH --mem=32G                            # Memory request
+#SBATCH --cpus-per-task=4                   # Number of CPU cores per task
+#SBATCH --nodes=1                           # Number of nodes
+#SBATCH --ntasks=1                          # Number of tasks (1 for DIAMOND blastx)
+#SBATCH --partition=all                     # Check if 'all' is the correct partition for your system
+
+conda init
+# Activate the correct conda environment
+conda activate /zfs/omics/projects/metatools/TOOLS/IMP3/conda/1ba2abbb978e5361e652d0d7c4fb2003
+#Just a minor clarification, it should be '-outfmt 6' for blast+ and '-m 8' for legacy blast. It would be easier if they were the same
+# Create output directory beforehand. This file has a smaller dataset I used head -n 10000
+mkdir -p fastp.diamond.results
+
+# Define file paths
+INPUT_DB="/home/12171115/personal/blast/concatenated_uniref.fasta"   # Your known protein sequences (database)
+QUERY_FILE="/home/12171115/personal/nienke/s2/fastp.s2/combined.fasta.fastp"  # Nucleotide sequences (query)
+OUTPUT_FILE="/home/12171115/personal/nienke/s2/fastp.s2/fastp.diamond.results/s2.fastp.diamond_blastx_results.tsv"  # Desired output file path for DIAMOND results
+
+# Step 1: Build the DIAMOND database (if not already built)
+echo "Starting diamond makedb..."
+start_time_makedb=$(date +%s)  # Record the start time for makedb
+diamond makedb --in $INPUT_DB --db $INPUT_DB.dmnd
+end_time_makedb=$(date +%s)    # Record the end time for makedb
+elapsed_time_makedb=$((end_time_makedb - start_time_makedb))
+echo "diamond makedb took $elapsed_time_makedb seconds."
+
+# Step 2: Run DIAMOND blastx against the database with your query file
+echo "Starting diamond blastx..."
+start_time_blastx=$(date +%s)   # Record the start time for blastx
+diamond blastx --db $INPUT_DB.dmnd --query $QUERY_FILE --out $OUTPUT_FILE --outfmt 6 --max-target-seqs 1000
+end_time_blastx=$(date +%s)     # Record the end time for blastx
+elapsed_time_blastx=$((end_time_blastx - start_time_blastx))
+echo "diamond blastx took $elapsed_time_blastx seconds."
+
+echo "DIAMOND blastx job completed successfully."
+
