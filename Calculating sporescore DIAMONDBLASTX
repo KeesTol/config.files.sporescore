@@ -1,0 +1,65 @@
+# Load required libraries
+library(dplyr)
+library(readr)
+
+# Get arguments from command line
+args <- commandArgs(trailingOnly = TRUE)
+diamond_file <- args[1]            # Input DIAMOND BLASTX results file (.tsv)
+gene_signature_file <- args[2]     # Gene signature file (.tsv)
+total_reads <- as.numeric(args[3]) # Total number of reads
+output_file <- args[4]             # Output file name
+
+# Function to calculate SporeScore for DIAMOND
+calculate_sporescore_diamond <- function(diamond_file, gene_signature_file, total_reads, output_file) {
+  # Load DIAMOND results
+  diamond_results <- read.table(diamond_file, header = FALSE, sep = "\t", quote = "", comment.char = "")
+  
+  # Assign column names
+  colnames(diamond_results) <- c("Query", "uniprot", "Identity", "AlignmentLength", "Mismatches", 
+                                 "GapOpens", "QStart", "QEnd", "SStart", "SEnd", "Evalue", "BitScore")
+  
+  # Filter for E-value < 0.001
+  diamond_filtered <- diamond_results %>%
+    filter(as.numeric(Evalue) < 0.001)
+  
+  # Extract uniprot ID from the Subject field
+  diamond_filtered <- diamond_filtered %>%
+    mutate(uniprot = sub(".*\\|([A-Z0-9]+)\\|.*", "\\1", uniprot)) %>%
+    mutate(uniprot = trimws(uniprot))
+  
+  # Count hits per uniprot
+  hits_summary <- diamond_filtered %>%
+    group_by(uniprot) %>%
+    summarize(Hits = n(), .groups = "drop")
+  
+  # Load gene signature table
+  gene_signature <- read_tsv(gene_signature_file, col_names = TRUE)
+  
+  # Join hits with weights
+  hits_with_weights <- hits_summary %>%
+    inner_join(gene_signature, by = "uniprot") %>%
+    mutate(WeightedHits = Hits * weight)
+  
+  # Calculate SporeScore
+  total_weighted_hits <- sum(hits_with_weights$WeightedHits, na.rm = TRUE)
+  SporeScore <- total_weighted_hits / total_reads
+  
+  # Print score
+  cat("SporeScore (DIAMOND Method):", SporeScore, "\n")
+  
+  # Output only desired columns
+  output <- hits_with_weights %>%
+    select(uniprot, Hits, weight, WeightedHits)
+  
+  # Write output file
+  write.table(output, output_file, row.names = FALSE, sep = "\t", quote = FALSE)
+  
+  return(output)
+}
+
+# Run the function
+final_table_diamond <- calculate_sporescore_diamond(diamond_file, gene_signature_file, total_reads, output_file)
+
+# Optional preview
+head(final_table_diamond)
+
